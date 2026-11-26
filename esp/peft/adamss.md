@@ -9,9 +9,9 @@
 **Método:**
 AdaMSS agrupa en un mismo cluster las columnas de $W_0$ que son aproximadamente combinaciones lineales las unas de las otras (es decir, que están en el mismo subespacio de baja dimensión), separándolas de los grupos con los que tienen poca relación. Cada cluster es un subespacio independiente y recibe su propia actualización:
 
-$$
+```math
 W^{(k)} = W_0^{(k)} + A^{(k)} B^{(k)} C^{(k)}, \qquad k = 1, \dots, K
-$$
+```
 
 * **Encontrar los subespacios:** con la SVD truncada de $W_0$ (rango $R$, `r=100` en `peft`) se obtiene la representación de menor rango $Z^\star = VV^\top$ ($W_0 \approx W_0 Z^\star$), que sale aproximadamente diagonal por bloques. Como las columnas de un mismo cluster están repartidas por $W_0$, se reordenan para que queden juntas, así $Z$ queda diagonal por bloques, con un bloque por subespacio. El posible ruido (lo que queda fuera de los bloques y lo que no captura la SVD truncada) se separa en una matriz de residuos que se queda congelada.
 * **Actualización por bloque ($A$, $B$, $C$):** en lugar de hacer actualizaciones pesadas dentro de cada cluster, se hace SVD sobre cada bloque. De ahí sale $A$, que se queda congelada (los "rieles" que marcan las direcciones del subespacio, así lo aprendido se inyecta en la dirección correcta), y el aprendizaje se comprime en dos matrices pequeñas: $B$, inicializada ortogonal con una descomposición QR para respetar la estructura de $A$ desde el principio, y $C$, que almacena "cuánto" corregir y se inicializa a 0 para que al principio $W = W_0$. Su tamaño lo controla `subspace_rank`.
@@ -26,7 +26,7 @@ $$
 **Limitaciones:**
 * **Qué no prueban:** clasificación de imágenes, NLU y matemáticas (modelos de hasta 7-8B), no difusión. La parte adaptativa no siempre compensa: AdaMSS<sub>base</sub> (sin poda) suele quedar igual o un poco por encima, a cambio de más parámetros entrenables.
 * **Supuestos:** asume que las columnas de $W_0$ viven aproximadamente en varios subespacios independientes (lo apoya la estructura casi diagonal por bloques de $Z^\star$ en ViT, RoBERTa y LLaMA); la segmentación es un clustering aproximado. Con ASA, el calendario tiene que caber en el presupuesto de pasos: el default `final_warmup=1000` está por encima de los 750 pasos del benchmark, así que probé también `600` (0.6823 / 0.2416, frente a 0.6784 / 0.2548 con `1000`). La diferencia con `use_asa=False` es mínima, y Bossan prefirió mantener el experimento tal cual.
-* **Coste:** la inicialización (SVD + clustering por capa) es más cara que la de PiSSA o LoRA-PRO (8.8 s frente a 2.3 s en LLaMA 2-7B). El checkpoint pesa 128.5 MB pese a tener 13 veces menos parámetros, porque guarda en fp32 las proyecciones congeladas de la SVD (r = 100 × `in_features` por capa, unos 117 MB); los parámetros entrenables solo ocupan unos 11 MB.
+* **Coste:** la inicialización (SVD + clustering por capa) es más cara que la de PiSSA o LoRA-PRO (8.8 s frente a 2.3 s en LLaMA 2-7B). El checkpoint pesa 128.5 MB pese a tener 13 veces menos parámetros, porque guarda en fp32 las proyecciones congeladas de la SVD ($100 \times d_{\text{in}}$ por capa con `r=100`, unos 117 MB); los parámetros entrenables solo ocupan unos 11 MB.
 
 **Conexión:** `#peft` `#subspace-segmentation` `#svd` `#adaptive-budget` `#adalora` `#flux2-klein` (primo de AdaLoRA: reutiliza el mismo `update_and_allocate`, pero poda bloques enteros de subespacio en vez de rangos dentro de una matriz. En el PR de resultados (#3641) añadí a `run.py` la llamada a `update_and_allocate(step)`, porque el callback de `peft` es para el `Trainer` de transformers y `run.py` usa su propio bucle; el checkpoint inflado por factores SVD congelados también pasa en TinyLoRA).
 

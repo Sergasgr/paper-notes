@@ -9,9 +9,9 @@
 **Método:**
 VeLoRA no es un adaptador nuevo, sino una modificación del *backprop*: comprime los vectores de activación intermedios que el paper llama tensor $Z$ (la $x$ de $y = Wx$) y los reconstruye solo cuando se necesitan. Con LoRA, $W$ está congelada y la $x$ se guarda para calcular el gradiente de la matriz $A$ de LoRA: esa es la copia que comprime VeLoRA en `peft`.
 
-$$
+```math
 Z \xrightarrow{\text{group}} z \in \mathbb{R}^{B \times \frac{ND}{M} \times M} \xrightarrow{\;z\,v\;} z_p \in \mathbb{R}^{B \times \frac{ND}{M} \times 1}, \qquad \hat{z} = z_p\, v^\top \;\;\Rightarrow\;\; \text{proj}_v(z) = (z\,v)\,v^\top
-$$
+```
 
 * **Agrupación:** cada token de dimensión $D$ se divide en sub-tokens más pequeños de tamaño $M \ll D$. En `peft` lo controla `num_groups`: con `num_groups=32`, cada token de 3,072 valores pasa a guardarse como 32 números.
 * **Proyección de rango 1:** cada sub-token se proyecta sobre un subespacio unidimensional fijo, un vector unitario $v$ que se calcula con la media del primer batch y se congela (sin SVD, a diferencia de GaLore). En memoria solo queda $z_p$.
@@ -34,7 +34,7 @@ $$
 1. **Conceptual:** *¿Qué comprime exactamente VeLoRA y qué deja intacto?*
    * **Respuesta:** Solo la copia de la entrada $x$ (el tensor $Z$) que se guarda durante el *forward* para calcular después $\partial \mathcal{L}/\partial W = (\partial \mathcal{L}/\partial y) \cdot x$; en `peft`, la entrada guardada para `lora_A`. El resultado del *forward* que pasa a la siguiente capa no se comprime, ni los pesos ni los estados del optimizador.
 2. **Matemática / Diseño:** *¿Cómo funcionan la compresión y la reconstrucción, y por qué basta con un único vector fijo?*
-   * **Respuesta:** Se reagrupa cada token en sub-tokens de tamaño $M$, se guarda $z_p = z\,v$ (un número por sub-token) y en el *backward* se reconstruye $\hat{z} = z_p v^\top$. Al trabajar con sub-tokens pequeños, un subespacio de dimensión 1 fijo (la media del primer batch) es suficiente: la reconstrucción pierde magnitud y dirección del gradiente, pero conserva localmente la similitud entre gradientes, que es lo que necesita la optimización para converger. Además evita SVD y recomputación.
+   * **Respuesta:** Se reagrupa cada token en sub-tokens de tamaño $M$, se guarda $`z_p = z\,v`$ (un número por sub-token) y en el *backward* se reconstruye $\hat{z} = z_p v^\top$. Al trabajar con sub-tokens pequeños, un subespacio de dimensión 1 fijo (la media del primer batch) es suficiente: la reconstrucción pierde magnitud y dirección del gradiente, pero conserva localmente la similitud entre gradientes, que es lo que necesita la optimización para converger. Además evita SVD y recomputación.
 3. **Crítica / Trade-offs:** *¿Por qué en `FLUX.2-klein` VeLoRA solo ahorra 34 MB, y por qué la run con $r=64$ contradice el argumento del paper de que permite "usar un rango mayor"?*
    * **Respuesta:** Porque el benchmark ya usa gradient checkpointing, que no guarda las activaciones de cada bloque, y porque la mayor parte de la VRAM (~7.2 GiB) son los pesos base en bf16. Con un ahorro casi nulo y fijo, no hay nada que compense la memoria extra de duplicar $r$ (parámetros, gradientes y estados de Adam de LoRA): $r=64$ usó 718 MB más sin mejorar el DINOv2.
 

@@ -9,13 +9,13 @@
 **Método:**
 Uni-LoRA muestra que muchas variantes de LoRA se pueden expresar en un mismo marco: una "matriz de proyección" $P$ que conecta su pequeño subespacio con el espacio original de LoRA. Se extraen todas las matrices $B$ y $A$ de las distintas capas y se concatenan y aplanan en un único vector columna $\theta_D$ ($D = L(m+n)r$), y solo se entrena $\theta_d$ ($d \ll D$):
 
-$$
+```math
 \theta_D = P\,\theta_d, \qquad P \in \mathbb{R}^{D \times d}, \qquad P^\top P = I_d
-$$
+```
 
 * **El marco unificado:** LoRA estándar es $P = I_D$ (isométrica pero sin compresión). VeRA y Tied-LoRA usan una $P$ diagonal por bloques (local por capa) y no uniforme (reparto distinto entre $m$ y $r$); LoRA-XS y FourierFT también son locales; VB-LoRA es global, pero su $P$ se aprende y no es isométrica. A partir de ahí, los autores diseñan una $P$ con tres propiedades: **globalidad, uniformidad (equilibrio de carga) e isometría**.
 * **Construcción de $P$:** $P$ no se entrena: se genera aleatoriamente y se congela. Cada fila es un vector *one-hot* que asigna cada parámetro de $\theta_D$ a una posición de $\theta_d$, seguido de una normalización por columnas ($1/\sqrt{n_j}$, con $n_j$ el número de parámetros del grupo $j$) para que los grupos que por azar recibieron más parámetros no dominen el entrenamiento. Como cada fila tiene un solo valor no nulo, las columnas son ortogonales y de norma 1, así que $P^\top P = I_d$ y las distancias se conservan. La regla estricta es que todos los parámetros de un mismo grupo comparten exactamente el mismo valor durante todo el entrenamiento: actúan como un bloque y copian la actualización de su posición en $\theta_d$.
-* **Implementación:** $P$ nunca se materializa: cada capa guarda los índices (generados desde una semilla) y los factores de normalización, reconstruye $A$ y $B$ al vuelo indexando $\theta_d$ y calcula $(xA)B$ sin construir $\Delta W$. Proyectar cuesta $\mathcal{O}(D)$ (frente a $\mathcal{O}(D \log d)$ de Fastfood), y al final basta con guardar **$d + 1$ números**: $\theta_d$ y la semilla.
+* **Implementación:** $P$ nunca se materializa: cada capa guarda los índices (generados desde una semilla) y los factores de normalización, reconstruye $A$ y $B$ al vuelo indexando $\theta_d$ y calcula $(xA)B$ sin construir $\Delta W$. Proyectar cuesta $\mathcal{O}(D)$ (frente a $\mathcal{O}(D \log d)$ de Fastfood), y al final basta con guardar **solo $d + 1$ números**: $\theta_d$ y la semilla.
 
 **Resultado clave:**
 * **GLUE (RoBERTa-large, $r=4$):** **88.3** de media con **0.023M** parámetros, frente a LoRA (87.8 con 0.786M, usando menos del 3% de sus parámetros), VB-LoRA (88.2) y FourierFT (88.0 con 0.048M).
@@ -34,7 +34,7 @@ $$
 1. **Conceptual:** *¿Qué critica Uni-LoRA de las proyecciones de VeRA, Tied-LoRA o VB-LoRA, y qué tres propiedades exige a su $P$?*
    * **Respuesta:** Que son locales (capa por capa, sin compartir parámetros entre capas y con el mismo tamaño para todas aunque unas importen más), no uniformes ($m$ frente a $r$) y no isométricas, lo que deforma las distancias del espacio de optimización (VB-LoRA es global, pero aprende su $P$ y tampoco es isométrica). Uni-LoRA exige **globalidad** (compartir entre todas las capas y matrices), **uniformidad** (grupos de tamaño parecido) e **isometría** ($P^\top P = I_d$).
 2. **Matemática / Diseño:** *¿Por qué la $P$ de Uni-LoRA es una isometría?*
-   * **Respuesta:** Cada fila es *one-hot*, así que dos columnas distintas nunca tienen un valor no nulo en la misma fila: $[P^\top P]_{j,k} = 0$ si $j \ne k$. Cada entrada no nula de la columna $j$ vale $1/\sqrt{n_j}$, así que $[P^\top P]_{j,j} = n_j \cdot (1/\sqrt{n_j})^2 = 1$. Por tanto $P^\top P = I_d$ y $\|P(x - y)\| = \|x - y\|$.
+   * **Respuesta:** Cada fila es *one-hot*, así que dos columnas distintas nunca tienen un valor no nulo en la misma fila: $`[P^\top P]_{j,k} = 0`$ si $j \ne k$. Cada entrada no nula de la columna $j$ vale $1/\sqrt{n_j}$, así que $`[P^\top P]_{j,j} = n_j \cdot (1/\sqrt{n_j})^2 = 1`$. Por tanto $P^\top P = I_d$ y $`\|P(x - y)\| = \|x - y\|`$.
 3. **Crítica / Trade-offs:** *¿Por qué en `FLUX.2-klein` subir $r$ de 4 a 32 empeoró el DINOv2 (0.6562 → 0.4462), y por qué Uni-LoRA no ahorra VRAM frente a un LoRA del mismo rango?*
    * **Respuesta:** Porque con $d$ fijo, subir $r$ no añade parámetros entrenables: solo hace que muchos más parámetros de LoRA caigan en el mismo grupo (~77 por valor de $\theta_d$ frente a ~10), así que la actualización queda más atada. Y no ahorra VRAM porque las $A$ y $B$ completas se reconstruyen en cada paso; el ahorro está en los estados del optimizador y en el checkpoint ($d+1$ números).
 

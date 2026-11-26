@@ -4,16 +4,16 @@
 
 **Problema:** El *sparse tuning* (actualizar solo una fracción minúscula de los pesos originales, manteniendo la inmensa mayoría congelada) tradicionalmente requiere cálculos pesados de gradientes o varias fases de entrenamiento para encontrar qué parámetros modificar, tanto que a veces anula la eficiencia que se intentaba conseguir.
 
-**Idea clave:** Reutilizar una métrica de poda (Wanda: magnitud del peso × norma de la activación que le llega) para elegir, con un único *forward* de calibración y sin gradientes, una máscara fija de pesos a entrenar (**Super**), y opcionalmente sumarle un LoRA dentro del mismo presupuesto de parámetros (**Supra**).
+**Idea clave:** Reutilizar una métrica de poda (Wanda: magnitud del peso $\times$ norma de la activación que le llega) para elegir, con un único *forward* de calibración y sin gradientes, una máscara fija de pesos a entrenar (**Super**), y opcionalmente sumarle un LoRA dentro del mismo presupuesto de parámetros (**Supra**).
 
 **Método:**
 A diferencia de LoRA, que aprende desde cero dos matrices pequeñas cuyo producto se suma como un parche, en *sparse tuning* la matriz de cambios que se suma a los pesos originales está llena de ceros, salvo unos pocos pesos específicos que sí permitimos entrenar:
 
-$$
+```math
 \hat{W} = W + M \odot U \quad (\text{Super}), \qquad \hat{W} = W + M \odot U + \gamma\, L R \quad (\text{Supra}), \qquad A_{ij} = |W_{ij}| \cdot \|X_j\|_2
-$$
+```
 
-* **Puntuación Wanda:** $|W_{ij}| \cdot \|X_j\|_2$, la magnitud del peso multiplicada por la norma de la activación de entrada que le llega. Si la $X$ que entra es enorme, el impacto de ese peso en la salida es gigantesco; si la $X$ es 0, el peso es inútil en ese momento. Se calcula con un único *forward pass* de calibración (cero cálculo de gradientes).
+* **Puntuación Wanda:** $`|W_{ij}| \cdot \|X_j\|_2`$, la magnitud del peso multiplicada por la norma de la activación de entrada que le llega. Si la $X$ que entra es enorme, el impacto de ese peso en la salida es gigantesco; si la $X$ es 0, el peso es inútil en ese momento. Se calcula con un único *forward pass* de calibración (cero cálculo de gradientes).
 * **Máscara y actualización:** con esa puntuación se construye una máscara $M$ del mismo tamaño que $W$, con un 1 en los $K$ pesos seleccionados (TopK: los de mayor puntuación; BottomK: los de menor) y un 0 en el resto. $U$ se inicializa llena de ceros y, al multiplicarla por la máscara, solo sobreviven las actualizaciones de los pesos seleccionados. El paper encuentra que BottomK suele dar los mejores resultados, porque altera las partes menos críticas del modelo, aunque la mejor dirección depende del modelo y del entrenamiento.
 * **Supra (híbrido):** suma a Super la actualización estándar de LoRA ($\gamma$ fija la fuerza del parche de bajo rango): actualizaciones milimétricas en ciertos pesos más un ajuste global de la capa. A diferencia de híbridos previos como RoSA, la máscara se elige una sola vez sin entrenamiento y bajo un límite estricto: $\lambda$ reparte el presupuesto entre el tamaño de LoRA y los pesos de Super, para no entrenar más parámetros que un LoRA tradicional.
 * **En `peft`:** la selección es por magnitud $|W|$, no por Wanda, así que no hay *forward* de calibración (según la documentación de `peft`, es la mejor configuración del paper). $U$ no existe como matriz completa: solo se guardan y entrenan los $K$ valores seleccionados con sus posiciones. No hay $\lambda$: el reparto de Supra se hace eligiendo `sparsity` y `r`.
@@ -40,7 +40,7 @@ $$
 
 **Flashcards**
 1. **P:** ¿Qué es la puntuación Wanda y cómo la usa Super?
-   **R:** $|W_{ij}| \cdot \|X_j\|_2$ (magnitud del peso × norma de su activación de entrada). Super la calcula con un *forward* de calibración y entrena solo los $K$ pesos con menor (BottomK) o mayor (TopK) puntuación.
+   **R:** $`|W_{ij}| \cdot \|X_j\|_2`$ (magnitud del peso $\times$ norma de su activación de entrada). Super la calcula con un *forward* de calibración y entrena solo los $K$ pesos con menor (BottomK) o mayor (TopK) puntuación.
 2. **P:** ¿Cuál es la diferencia entre Super y Supra?
    **R:** Super: $\hat{W} = W + M \odot U$ (solo pesos dispersos). Supra: $\hat{W} = W + M \odot U + \gamma LR$ (además un LoRA), con $\lambda$ repartiendo el presupuesto para no superar los parámetros de un LoRA.
 3. **P:** ¿Por qué el checkpoint de Super-Tuning pesa el doble que el de LoRA con los mismos parámetros?

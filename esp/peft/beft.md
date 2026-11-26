@@ -11,9 +11,9 @@ A diferencia de otras técnicas de reentrenamiento (como LoRA o Adapters), BEFT 
 
 En lugar de fijarse solo en si la "flecha" creció o encogió, compara el bias antes ($b_{\mathcal{T}}^{(l),\text{pre}}$) y después ($b_{\mathcal{T}}^{(l),\text{post}}$) del warmup proyectando el vector más corto sobre el más largo (el reentrenado sobre el original, o a la inversa), lo que captura a la vez el cambio de longitud y de ángulo $\alpha$:
 
-$$
+```math
 \mathcal{I}(b_{\mathcal{T}}) = \frac{1}{L} \sum_{l=1}^{L} \left( 1 - \frac{b_{\mathcal{T}}^{(l),\text{pre}} \cdot b_{\mathcal{T}}^{(l),\text{post}}}{\max\left(\|b_{\mathcal{T}}^{(l),\text{pre}}\|_2^2,\ \|b_{\mathcal{T}}^{(l),\text{post}}\|_2^2\right)} \right), \qquad \mathcal{T}^* = \arg\max_{\mathcal{T} \in \{q,k,v\}} \mathcal{I}(b_{\mathcal{T}})
-$$
+```
 
 * **Warmup y score:** se reentrenan todos los biases y se compara cómo han variado respecto a los originales. Aquellos cuya proyección se reduce más (han variado mucho en longitud y/o dirección) dan una fracción pequeña y, al restarla a 1, obtienen el score más alto.
 * **Selección de la familia:** se promedian los scores en todas las capas para cada tipo de bias y gana una única "familia" completa (toda la de query, la de key o la de value). El fine-tuning real congela el resto de la red y modifica a la vez esa familia en todas las capas. $b_v$ suele ser la ganadora indiscutible, y el paper muestra que el hallazgo se reutiliza en otros datasets y LLMs sin repetir el warmup.
@@ -35,8 +35,8 @@ $$
 **Preguntas**
 1. **Conceptual:** *¿Por qué el criterio de BEFT elige mejor qué bias entrenar que la magnitud del cambio o la información de Fisher?*
    * **Respuesta:** Porque la magnitud ($\ell_1$) solo mide cuánto cambió el bias y da el mismo score a biases distintos sobre un mismo rombo aunque hayan rotado, y la Fisher empírica se calcula antes de entrenar y da un ranking estático, igual de *low-data* a *all-data*. BEFT, tras el warmup, mide longitud y ángulo a la vez con la proyección, y su ranking se adapta a la tarea y a la cantidad de datos.
-2. **Matemática / Diseño:** *¿Por qué el denominador del score es $\max(\|b^{\text{pre}}\|_2^2, \|b^{\text{post}}\|_2^2)$ y no siempre $\|b^{\text{pre}}\|_2^2$?*
-   * **Respuesta:** Porque así siempre se proyecta el vector más corto sobre el más largo y el ratio ($\frac{\|b_{\text{corto}}\|_2}{\|b_{\text{largo}}\|_2}\cos\alpha$) queda acotado por 1. Si se proyectara siempre sobre el original, un bias que triplica su norma casi sin rotar daría un ratio cercano a 3 y un score negativo, como si no hubiera cambiado. Con el máximo, tanto encoger como crecer o rotar suben el score $1 - \text{ratio}$.
+2. **Matemática / Diseño:** *¿Por qué el denominador del score es $`\max(\|b^{\text{pre}}\|_2^2, \|b^{\text{post}}\|_2^2)`$ y no siempre $`\|b^{\text{pre}}\|_2^2`$?*
+   * **Respuesta:** Porque así siempre se proyecta el vector más corto sobre el más largo y el ratio ($`\frac{\|b_{\text{corto}}\|_2}{\|b_{\text{largo}}\|_2}\cos\alpha`$) queda acotado por 1. Si se proyectara siempre sobre el original, un bias que triplica su norma casi sin rotar daría un ratio cercano a 3 y un score negativo, como si no hubiera cambiado. Con el máximo, tanto encoger como crecer o rotar suben el score $1 - \text{ratio}$.
 3. **Crítica / Trade-offs:** *¿Por qué BEFT hace underfit en `FLUX.2-klein`, por qué su drift bajo no es una ventaja y por qué apenas ahorra VRAM frente a LoRA?*
    * **Respuesta:** Un bias es una traslación constante que no cambia cómo la capa transforma la entrada, y aprender un sujeto visual en *few-shot* necesita más que eso. El drift bajo (0.0732) solo refleja que el modelo apenas cambió: no es una ventaja si la calidad no es la misma (DINOv2 0.52 frente a 0.68 de LoRA). La VRAM apenas baja porque la ocupan sobre todo los 4B de parámetros base congelados. El margen que queda es adaptar más capas: +6.9% de parámetros dio +15% de DINOv2.
 
@@ -44,7 +44,7 @@ $$
 1. **P:** ¿Qué diferencia a BEFT de BitFit?
    **R:** BitFit entrena todos los biases (0.09% en BERT-base); BEFT hace un warmup, puntúa cada familia ($b_q$, $b_k$, $b_v$) por proyección y entrena solo la ganadora en todas las capas (0.01%), normalmente $b_v$.
 2. **P:** ¿Qué mide el score de BEFT?
-   **R:** El cambio de longitud y de ángulo de cada bias tras el warmup, proyectando el vector más corto sobre el más largo: $1 - \frac{b^{\text{pre}} \cdot b^{\text{post}}}{\max(\|b^{\text{pre}}\|_2^2, \|b^{\text{post}}\|_2^2)}$, promediado en todas las capas.
+   **R:** El cambio de longitud y de ángulo de cada bias tras el warmup, proyectando el vector más corto sobre el más largo: $`1 - \frac{b^{\text{pre}} \cdot b^{\text{post}}}{\max(\|b^{\text{pre}}\|_2^2, \|b^{\text{post}}\|_2^2)}`$, promediado en todas las capas.
 3. **P:** ¿Cómo aplica `peft` BEFT a `FLUX.2-klein`, cuyas capas no tienen bias?
    **R:** No hace la selección de $b_v$: añade un bias nuevo inicializado a 0 en cada capa de `target_modules`, así que entrena tantos parámetros como la suma de sus `out_features` (890,880 en 80 capas).
 4. **P:** ¿Qué consiguió ampliar `target_modules` en BEFT sobre `FLUX.2-klein`?

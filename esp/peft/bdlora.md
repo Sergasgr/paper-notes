@@ -9,9 +9,9 @@
 **Método:**
 Una capa típica de Transformer tiene dos transformaciones, $W_1$ y $W_2$, que el modelo base reparte entre GPUs siguiendo Megatron-LM: $W_1$ cortada por columnas y $W_2$ cortada por filas. BD-LoRA alinea el adaptador con ese reparto:
 
-$$
+```math
 XW_1 + XA_1B_1, \quad B_1 = \text{diag}\big(B_1^{(1)}, \dots, B_1^{(N)}\big); \qquad YW_2 + YA_2B_2, \quad A_2 = \text{diag}\big(A_2^{(1)}, \dots, A_2^{(N)}\big)
-$$
+```
 
 * **Primera transformación ($W_1$, por columnas):** se corta $A_1$ por columnas y se fuerza $B_1$ a ser bloque-diagonal. Así el resultado intermedio de LoRA ($XA_1B_1$) queda cortado por columnas exactamente igual que el del modelo base ($XW_1$), y como ambos trozos están en la misma GPU se suman sin enviar ni recibir datos de otras tarjetas.
 * **Segunda transformación ($W_2$, por filas):** se fuerza $A_2$ a ser bloque-diagonal y se corta $B_2$ por filas. Cada GPU calcula su parte con la entrada que ya tiene y el *all-reduce* que el modelo base hace de todos modos suma también la contribución de LoRA. Se elimina por completo la sobrecarga de comunicación de LoRA.

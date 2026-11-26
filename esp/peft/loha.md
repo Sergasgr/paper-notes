@@ -9,9 +9,9 @@
 **Método:**
 LoHa (*low-rank Hadamard product*) viene de FedPara, un paper de aprendizaje federado, y se popularizó con LyCORIS para Stable Diffusion. En FedPara es la propia matriz de pesos la que se parametriza así, $W = (X_1Y_1^\top) \odot (X_2Y_2^\top)$, y se entrena desde cero; LoHa aplica la misma idea a la actualización $\Delta W$ sobre pesos congelados:
 
-$$
+```math
 \Delta W = (A_1 B_1) \odot (A_2 B_2) \cdot \frac{\alpha}{r}, \qquad \text{rango}(\Delta W) \le \text{rango}(A_1 B_1) \cdot \text{rango}(A_2 B_2) \le r^2
-$$
+```
 
 * **La clave es el rango:** cada producto $A_i B_i$ tiene como mucho rango $r$, pero su Hadamard puede llegar a rango $r^2$ (la misma desigualdad que usa HiRA). Con $r=32$, LoRA está limitado a rango 32 y LoHa puede llegar a **1024**, con el doble de parámetros ($2 \cdot r \cdot (\text{in} + \text{out})$ por capa frente a $r \cdot (\text{in} + \text{out})$). Para llegar a ese rango, LoRA necesitaría $r=1024$, con 16 veces más parámetros que LoHa. Si $r^2 \ge \min(m, n)$, la matriz puede llegar (con alta probabilidad) a rango completo, y para un rango objetivo $R^2$ usar el mismo $R$ en los dos pares es la elección con menos parámetros (Proposición 2), que es lo que hace `peft` con un único `r`.
 * **Diferencia con HiRA:** usa el producto Hadamard igual que HiRA, pero en vez de multiplicar por los pesos originales $W_0$, multiplica entre sí dos actualizaciones de bajo rango: no se apoya en el conocimiento de $W_0$, pero tampoco depende de él.

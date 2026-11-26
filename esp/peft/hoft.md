@@ -7,27 +7,31 @@
 **Idea clave:** A diferencia del resto de métodos PEFT ortogonales que solo rotan la salida y congelan la entrada, HOFT entrena **dos matrices ortogonales** ($Q_U$ y $Q_V$) construidas en paralelo mediante "espejos" de Householder para multiplicar los pesos preentrenados por delante y por detrás, logrando reorientar tanto la entrada como la salida sin destruir la estructura geométrica aprendida en el preentrenamiento. 
 
 **Método:**
-A diferencia de los métodos aditivos, el ajuste fino ortogonal es **multiplicativo**: preserva longitudes, ángulos y la **energía hiperesférica** ($HE(W) = \sum_{i \neq j} \|w_i - w_j\|^{-1}$), manteniendo separadas y diversas las neuronas ya entrenadas.
+A diferencia de los métodos aditivos, el ajuste fino ortogonal es **multiplicativo**: preserva longitudes, ángulos y la **energía hiperesférica** ($`HE(W) = \sum_{i \neq j} \|w_i - w_j\|^{-1}`$), manteniendo separadas y diversas las neuronas ya entrenadas.
 
 Visto desde la descomposición **SVD** ($M = U \Sigma V^\top$, donde $V^\top$ rota la entrada, $\Sigma$ estira según importancia y $U$ rota la salida), conservar la energía hiperesférica exige mantener intactos los estiramientos ($\hat{\Sigma} = \Sigma$), pero dejando libres **ambas** rotaciones ($\hat{U}$ y $\hat{V}^\top$). 
 
-Métodos como **OFT, BOFT y HRA** solo aplican una transformación por la izquierda ($\hat{M} = QM = QU\Sigma V^\top$), lo que permite adaptar $U$ pero deja $V^\top$ **congelada** e impide alcanzar todas las matrices posibles (incurriendo en un error acotado por el Orthogonal Procrustes Problem: $\min_{Q \in O(m)} \Vert{}\hat{M} - QM\Vert{}_F \le 2\sqrt{m}\Vert{}M\Vert{}_F$). HOFT resuelve esto entrenando **dos matrices ortogonales**, $Q_U \in O(m)$ y $Q_V \in O(n)$, que actualizan implícitamente tanto $U$ como $V^\top$ sin necesidad de calcular la SVD:
+Métodos como **OFT, BOFT y HRA** solo aplican una transformación por la izquierda ($\hat{M} = QM = QU\Sigma V^\top$), lo que permite adaptar $U$ pero deja $V^\top$ **congelada** e impide alcanzar todas las matrices posibles (incurriendo en un error acotado por el Orthogonal Procrustes Problem: $`\min_{Q \in O(m)} \Vert{}\hat{M} - QM\Vert{}_F \le 2\sqrt{m}\Vert{}M\Vert{}_F`$). HOFT resuelve esto entrenando **dos matrices ortogonales**, $Q_U \in O(m)$ y $Q_V \in O(n)$, que actualizan implícitamente tanto $U$ como $V^\top$ sin necesidad de calcular la SVD:
 
-$$
+```math
 \hat{M} = Q_U M Q_V = \underbrace{(Q_U U)}_{\hat{U}} \Sigma \underbrace{(V^\top Q_V)}_{\hat{V}^\top}
-$$
+```
 
 * **Construcción paralela (Transformada CWY + Serie de Neumann):** Cada una de las dos matrices ortogonales acumula $r$ reflexiones de Householder ($H_i = I - \frac{u_i u_i^\top}{\tau_i}$) agrupando los vectores normalizadores como columnas de $U \in \mathbb{R}^{m \times r}$ y $V \in \mathbb{R}^{n \times r}$. Para evitar el producto secuencial de HRA y el coste de invertir matrices densas durante el entrenamiento, se usa la transformada CWY y se separa la matriz triangular superior $S = D + A$ (diagonal + triangular superior estricta), aproximando $S^{-1}$ con los dos primeros términos de la serie de Neumann:
-  $$Q_U = I - U S^{-1} U^\top \approx I + U(D^{-1}AD^{-1} - D^{-1})U^\top$$
+  ```math
+  Q_U = I - U S^{-1} U^\top \approx I + U(D^{-1}AD^{-1} - D^{-1})U^\top
+  ```
 * **Inicialización aleatoria:** A diferencia de OFT/BOFT (que exigen inicializar a cero), HOFT inicializa parejas consecutivas de vectores gaussianos idénticos $U = (u_1 | u_1 | \dots | u_k | u_k)$. Como reflejar dos veces devuelve el vector original ($H_i H_i = I$), $Q_U = I$ y $Q_V = I$ al inicio del entrenamiento.
 * **Variante SHOFT (inspirada en DoRA):** Introduce un vector entrenable de escalado $m \in \mathbb{R}^m$ (inicializado a unos) justo entre ambas rotaciones para ajustar tanto dirección como magnitud, relajando la conservación estricta de energía hiperesférica:
-  $$\hat{M} = Q_U m M Q_V$$
+  ```math
+  \hat{M} = Q_U m M Q_V
+  ```
 
 **Resultado clave:**
 * **Razonamiento de sentido común (8 benchmarks, $r=16$):** **HOFT alcanza 87.4%** en LLaMA3.1-8B (vs. 87.0% LoRA, 87.1% DoRA, 86.5% OFT) y **92.4%** en Qwen2.5-14B (vs. 92.1% LoRA, 92.0% DoRA); **SHOFT logra 92.2%** en Phi4-14B (vs. 91.8% DoRA, 91.7% LoRA).
 * **Razonamiento matemático (MetaMathQA sobre LLaMA2-7B, $r=8$):** **HOFT obtiene 56.6%** en GSM8K (vs. 50.2% LoRA, 53.5% DoRA, 56.3% HRA) y **SHOFT logra 9.8%** en MATH (vs. 7.8% LoRA, 9.1% DoRA, 9.3% HRA).
 * **Modelos cuantizados a 4 bits (QHOFT / QSHOFT):** En Qwen2.5-32B (0.07% parámetros), **QSHOFT sube a 75.0%** en GSM8K (vs. 68.0% QLoRA, 68.4% QDoRA) y **QHOFT alcanza 80.6%** en Orca-Math (vs. 77.4% QLoRA, 61.4% QDoRA).
-* **Generación personalizada (DreamBooth en SD 1.5) y velocidad:** $\text{HOFT}_{r=4}$ logra **0.680 DINO / 0.810 CLIP-I** (superando a LoRA 0.613/0.765 y DoRA 0.633/0.781), entrenando un **732.5% más rápido que HRA** (4.3h vs. 35.8h) y un **72.1% más rápido que OFT** (4.3h vs. 7.4h).
+* **Generación personalizada (DreamBooth en SD 1.5) y velocidad:** $`\text{HOFT}_{r=4}`$ logra **0.680 DINO / 0.810 CLIP-I** (superando a LoRA 0.613/0.765 y DoRA 0.633/0.781), entrenando un **732.5% más rápido que HRA** (4.3h vs. 35.8h) y un **72.1% más rápido que OFT** (4.3h vs. 7.4h).
 
 **Limitaciones:**
 * **Qué no prueban:** No evalúan modelos multimodales (*visual instruction tuning*) ni estrategias de compresión de parámetros mediante bancos de vectores (tipo VB-LoRA).

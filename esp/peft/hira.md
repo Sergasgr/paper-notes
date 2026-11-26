@@ -9,9 +9,9 @@
 **Método:**
 HiRA es una evolución de LoRA. Al igual que LoRA crea dos matrices ($L_1$ y $L_2$), pero en vez de sumar simplemente su producto a la matriz de pesos congelada, suma el producto Hadamard entre la matriz de pesos original y $L_1 L_2$:
 
-$$
+```math
 W' = W_0 + W_0 \odot (L_1 L_2), \qquad \text{rango}\big(W_0 \odot (L_1 L_2)\big) \le \text{rango}(W_0) \cdot r
-$$
+```
 
 * **Por qué rompe el límite de rango:** el límite $r$ es del producto $L_1 L_2$, no de cada matriz por separado. En $L_1 L_2$ muchas filas son múltiplos o combinaciones lineales de otras (información redundante). Las filas de $W_0$ son distintas entre sí: al multiplicar elemento a elemento, cada fila se multiplica por números diferentes y deja de ser múltiplo de las demás, rompiendo la dependencia lineal. En el paper (LLaMA-3-8B, $r=32$) el rango de $\Delta W$ pasa de **32** con LoRA a **2837** con HiRA. Eso es lo que el paper llama "alto rango".
 * **Subirse a los hombros del modelo:** si un peso de $W_0$ es grande (representa un concepto que el modelo ya domina), al hacer el Hadamard su actualización cobra mucha más importancia: $L_1 L_2$ no crea ideas nuevas ni tiene que generar un número grande desde cero, solo decide qué amplificar y qué apagar. Los gradientes de $L_1$ y $L_2$ también quedan modulados por $W_0$. Usar $W_0$ importa: con una matriz aleatoria $R$ en su lugar, la media en sentido común cae de 86.72% a 37.63%.

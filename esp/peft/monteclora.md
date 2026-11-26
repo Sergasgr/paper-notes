@@ -9,9 +9,9 @@
 **Método:**
 MonteCLoRA es una alternativa bayesiana a LoRA. Mediante una estimación Monte Carlo promedia varios pesos posibles (aproxima la marginalización de la distribución predictiva), de modo que el modelo promedia la incertidumbre y no se desestabiliza por una configuración subóptima:
 
-$$
+```math
 \Sigma \sim \mathcal{W}(V, n_{\text{in}}), \quad \pi \sim \text{Dir}(\alpha), \quad S^{(k)} \sim \mathcal{N}(0, \Sigma), \qquad A_{\text{MonteCLoRA}} = \mu + \epsilon \sum_{k=1}^{N} \pi_k\, S^{(k)}
-$$
+```
 
 * **Factorización y parámetros extra:** aprender la distribución conjunta de toda $A$ es inviable, así que se asume que cada columna se comporta como una distribución independiente. Se entrenan $\mu$ (los pesos de LoRA), la escala $V$ de la Wishart (diagonal) y la concentración $\alpha$ de la Dirichlet: solo $\mathcal{O}(r)$ parámetros extra por capa.
 * **Candidatos (Wishart) y pesos (Dirichlet):** se generan $N$ candidatos posibles. La Wishart genera la matriz de covarianza, es decir, cuánto pueden alejarse los candidatos de $\mu$, escalada por $\epsilon$ (`sample_scaler`); la Dirichlet reparte el 100% de importancia entre los $N$ candidatos. Ejemplo con un solo peso: $\mu = 10.0$, ruidos $+1.0$, $-0.5$, $+0.2$ con pesos 0.6, 0.3 y 0.1 → $+0.47$; con $\epsilon = 0.1$, el peso usado es 10.047. El *backprop* actualiza $\mu$ y, a la vez, los parámetros de Wishart y Dirichlet.
@@ -20,12 +20,12 @@ $$
 **Resultado clave:**
 * **NLU (RoBERTa-base, GLUE y SuperGLUE):** +0.5% de accuracy y +1.6% de robustez frente a LoRA sin regularizar.
 * **Sentido común (LLaMA-1-7B, varias configuraciones de lr y batch):** la dispersión de accuracy baja un **53%** (2.19 frente a 4.69 puntos de LoRA), con una media a la par (71.1% frente a 71.3%). En LLaMA-3.2-3B-Instruct, **−62%** de dispersión y +13.3% de robustez.
-* **Mis experimentos (`FLUX.2-klein`, $r=16$ y $N=2$ por los 16 GB de VRAM):** con $\epsilon$=`5e-3` y *cooperative loss*: **DINOv2 = 0.6916** / drift 0.2846 (19,170,720 parámetros, 12,974 MB, 1,284 s); con $\epsilon$=`2.5e-3`: 0.6784 / 0.2690; sin *cooperative loss*: 0.6780 / 0.2615. En una RTX 5090 probé la config del paper ($r=32$, $N=4$: 0.6453, 22,018 MB) y $r=32$ con $N=2$ (0.6831, 16,402 MB): ninguna mejoró la entrada actual ni a LoRA $r=32$ en la misma GPU (0.6944 / drift 0.2439, 10,342 MB), así que la entrada se mantiene y esas dos runs van al graveyard.
+* **Mis experimentos (`FLUX.2-klein`, $r=16$ y $N=2$ por los 16 GB de VRAM):** con $\epsilon = 5 \times 10^{-3}$ y *cooperative loss*: **DINOv2 = 0.6916** / drift 0.2846 (19,170,720 parámetros, 12,974 MB, 1,284 s); con $\epsilon = 2.5 \times 10^{-3}$: 0.6784 / 0.2690; sin *cooperative loss*: 0.6780 / 0.2615. En una RTX 5090 probé la config del paper ($r=32$, $N=4$: 0.6453, 22,018 MB) y $r=32$ con $N=2$ (0.6831, 16,402 MB): ninguna mejoró la entrada actual ni a LoRA $r=32$ en la misma GPU (0.6944 / drift 0.2439, 10,342 MB), así que la entrada se mantiene y esas dos runs van al graveyard.
 
 **Limitaciones:**
 * **Qué no prueban:** modelos de lenguaje de hasta 7B (sin difusión). Su ganancia es la **robustez** (menos dispersión entre configuraciones), no una media más alta: en LLaMA-1-7B la media queda igual que LoRA.
-* **Supuestos:** reduce la sensibilidad al lr, pero no es que funcione mágicamente con cualquier valor absurdo: da más margen de error. Y añade otro hiperparámetro sensible, $\epsilon$: según el paper, un $\epsilon$ alto puede hacer diverger el modelo y uno bajo, sobreajustar (0.005 fue el mejor), además del peso de la KL. El otro $\epsilon$ del paper es $2.5 \times 10^{-5}$ (para LLaMA-3.2), no `2.5e-3`: mi `2.5e-3` es simplemente la mitad de `5e-3`. Mi entrada con $r=16$ y $N=2$ tampoco era una comparación justa con LoRA $r=32$.
-* **Coste:** el muestreo Monte Carlo añade tiempo de entrenamiento (1.23–1.30x LoRA en LLaMA-3.1-8B, incluso con muestras precalculadas en un *buffer*). En `FLUX.2-klein` la memoria extra viene del *buffer* de ruido que MonteCLoRA genera por adelantado, que crece con `buffer_size` × $N$ × $r$: 12,974 MB con $r=16$/$N=2$ y 22,018 MB con $r=32$/$N=4$, frente a ~10.4 GB de LoRA.
+* **Supuestos:** reduce la sensibilidad al lr, pero no es que funcione mágicamente con cualquier valor absurdo: da más margen de error. Y añade otro hiperparámetro sensible, $\epsilon$: según el paper, un $\epsilon$ alto puede hacer diverger el modelo y uno bajo, sobreajustar (0.005 fue el mejor), además del peso de la KL. El otro $\epsilon$ del paper es $2.5 \times 10^{-5}$ (para LLaMA-3.2), no $2.5 \times 10^{-3}$: mi $2.5 \times 10^{-3}$ es simplemente la mitad de $5 \times 10^{-3}$. Mi entrada con $r=16$ y $N=2$ tampoco era una comparación justa con LoRA $r=32$.
+* **Coste:** el muestreo Monte Carlo añade tiempo de entrenamiento (1.23–1.30x LoRA en LLaMA-3.1-8B, incluso con muestras precalculadas en un *buffer*). En `FLUX.2-klein` la memoria extra viene del *buffer* de ruido que MonteCLoRA genera por adelantado, que crece con $`\text{buffer\_size} \times N \times r`$: 12,974 MB con $r=16, N=2$ y 22,018 MB con $r=32, N=4$, frente a ~10.4 GB de LoRA.
 
 **Conexión:** `#peft` `#bayesian` `#monte-carlo` `#robustness` `#lora` `#learning-rate` `#flux2-klein` (otra respuesta a la sensibilidad al lr que vi en HiRA, LoHa y FourierFT, pero regularizando en vez de buscar el lr; en inferencia es un LoRA normal. La entrada y las runs de la 5090 se discutieron en el PR #3806).
 
@@ -45,4 +45,4 @@ $$
 3. **P:** ¿Qué se usa en inferencia y al hacer *merge*?
    **R:** La $A$ media ($\mu$), sin muestrear ruido: queda como un LoRA normal, sin coste extra.
 4. **P:** ¿De dónde viene la memoria extra de MonteCLoRA en `FLUX.2-klein`?
-   **R:** Del *buffer* de ruido que genera por adelantado, que crece con `buffer_size` × $N$ × $r$ (22,018 MB con $r=32$, $N=4$).
+   **R:** Del *buffer* de ruido que genera por adelantado, que crece con $`\text{buffer\_size} \times N \times r`$ (22,018 MB con $r=32$, $N=4$).
