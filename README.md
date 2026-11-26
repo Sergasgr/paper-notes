@@ -1,36 +1,36 @@
 # paper-notes
 
-mis resúmenes de papers de IA/ML.
+My AI/ML paper summaries.
 
-## Estructura de cada nota
-
-```
-# <Título> (<año>, <lab o autores>)
-**Pregunta con la que lo leí:**
-**Problema:** qué no funcionaba antes, en 1–2 frases
-**Idea clave:** una frase que entienda alguien de mi clase
-**Método:** la ecuación o el diagrama central, escrito por mí
-**Resultado clave:** el número que importa y contra qué baseline (+ mis experimentos, si los hay)
-**Limitaciones:** qué no prueban, supuestos, coste
-**Conexión:** tags + relación con TFG / CodeAlign / Distill / peft / pregunta del examen
-**Preguntas:** 3 de entrevista (conceptual, matemática/diseño, crítica/trade-offs), con respuesta
-**Flashcards:** 3–5, en forma de pregunta (P/R)
-```
-
-## Carpetas
+## Note Structure
 
 ```
-eng/        notas en inglés
-esp/        notas en español
-  peft/     métodos PEFT (+ mis experimentos en el benchmark image-gen de peft)
+# <Title> (<year>, <lab or authors>)
+**Guiding Question:**
+**Problem:** what didn't work before, in 1–2 sentences
+**Key Idea:** one sentence understandable to someone in my class
+**Method:** the central equation or diagram, written by me
+**Key Result:** the important number and against which baseline (+ my experiments, if any)
+**Limitations:** what they don't prove, assumptions, cost
+**Connection:** tags + relationship to TFG / CodeAlign / Distill / peft / exam question
+**Questions:** 3 interview-style (conceptual, math/design, critique/trade-offs), with answers
+**Flashcards:** 3–5, in Q&A format
+```
+
+## Folders
+
+```
+eng/        notes in English
+esp/        notes in Spanish
+  peft/     PEFT methods (+ my experiments on the peft image-gen benchmark)
   rl/
   ...
 ```
 
-## Experimentos en `FLUX.2-klein`
+## Experiments on `FLUX.2-klein`
 
-Las notas de `peft/` incluyen mis runs en el benchmark de comparación de métodos image-gen de [huggingface/peft](https://github.com/huggingface/peft) (`FLUX.2-klein`, sujeto *few-shot* con 2 imágenes de validación y 4 de test, 750 pasos):
+The notes in `peft/` include my runs on the image-gen method comparison benchmark from [huggingface/peft](https://github.com/huggingface/peft) (`FLUX.2-klein`, *few-shot* subject with 2 validation images and 4 test images, 750 steps):
 
-- **DINOv2 similarity (test):** similitud coseno DINOv2 con las imágenes de test (fidelidad al sujeto; más alto = mejor).
-- **Drift:** cuánto cambian las imágenes para prompts sin relación (p. ej. *"an astronaut riding a horse"*) respecto al modelo base con la misma semilla: (1 − similitud coseno media de DINOv2) / 2; 0 = imágenes idénticas.
-- **Baseline:** LoRA r=32 (DINOv2 0.6815 / drift 0.2721 en mi RTX 5070 Ti; 0.6972 / 0.2620 en la L40S del benchmark oficial).
+- **DINOv2 similarity (test):** DINOv2 cosine similarity with the test images (subject fidelity; higher = better).
+- **Drift:** how much images change for unrelated prompts (e.g., *"an astronaut riding a horse"*) compared to the base model with the same seed: (1 − mean DINOv2 cosine similarity) / 2; 0 = identical images.
+- **Baseline:** LoRA r=32 (DINOv2 0.6815 / drift 0.2721 on my RTX 5070 Ti; 0.6972 / 0.2620 on the official benchmark's L40S).
